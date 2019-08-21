@@ -12,7 +12,11 @@ use work.cdcSyncBit;
 entity overlapStreamBuffer2 is
 	generic(depthOrder, overlapOrder: integer;
 			dataBits: integer;
-			bitPermDelay: integer := 0);
+			bitPermDelay: integer := 0;
+			-- removes 1 or 2 registers from the doutIndex pipeline
+			doutIndexAdvance: integer := 0;
+			-- removes 1 or 2 registers from the doutValid pipeline
+			doutValidAdvance: integer := 0);
 	port(inClk, outClk: in std_logic;
 		din: in complex;
 		dinValid: in std_logic := '1';
@@ -56,6 +60,7 @@ architecture ar of overlapStreamBuffer2 is
 	signal ramRAddr: unsigned(ramDepthOrder-1 downto 0);
 	-- counter B consists of the read marker concatenated with the read index
 	signal counterB: unsigned(depthOrder+upperDepthOrder-1 downto 0) := (others=>'0');
+	signal counterBP1: unsigned(depthOrder+upperDepthOrder-1 downto 0) := (0=>'1', others=>'0');
 	signal counterBIndex, index, readLogicalOffset: unsigned(depthOrder-1 downto 0) := (others=>'0');
 	signal counterAUpper_outClk, readMarker, readMarker1: unsigned(upperDepthOrder-1 downto 0) := (others=>'0');
 	signal outCE: std_logic := '0';
@@ -78,7 +83,8 @@ begin
 			datain=>counterAUpper, dataout=>counterAUpper_outClk);
 
 	-- outClk domain
-	counterB <= counterB+1 when outCE='1' and rising_edge(outClk);
+	counterBP1 <= counterBP1+1 when outCE='1' and rising_edge(outClk);
+	counterB <= counterBP1 when outCE='1' and rising_edge(outClk);
 	readMarker <= counterB(counterB'left downto counterB'left-upperDepthOrder+1);
 	counterBIndex <= counterB(counterBIndex'range);
 	bitPermIn <= counterBIndex;
@@ -99,11 +105,11 @@ begin
 		port map(clk=>outClk, din=>counterBIndex, dout=>doutPhase);
 
 	sr_index: entity sr_unsigned
-		generic map(bits=>depthOrder, len=>ramReadDelay)
+		generic map(bits=>depthOrder, len=>ramReadDelay-doutIndexAdvance)
 		port map(clk=>outClk, din=>index, dout=>doutIndex);
 
 	sr_valid: entity sr_bit
-		generic map(len=>bitPermDelay + ramReadDelay)
+		generic map(len=>bitPermDelay + ramReadDelay - doutValidAdvance)
 		port map(clk=>outClk, din=>outCE, dout=>doutValid);
 
 end ar;
