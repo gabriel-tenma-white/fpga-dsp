@@ -36,7 +36,7 @@ architecture a of channelSelector is
 	signal counter, counterNext: unsigned(ramDepthOrder-1 downto 0);
 
 	-- compare & capture
-	signal compEq, doAdvance, doAdvanceNext: std_logic;
+	signal doAdvance, doAdvanceNext: std_logic;
 begin
 	channelsRam: entity dcram
 		generic map(width=>channelBits+1,
@@ -71,8 +71,7 @@ begin
 	counterRst <= '1' when dinValid='1' and dinChannel=(dinChannel'range=>'1') else '0';
 
 	-- compare & capture
-	compEq <= '1' when dinChannel=currChannel else '0';
-	doAdvanceNext <= compEq and dinValid and currChannelValid;
+	doAdvanceNext <= '1' when (dinValid & currChannelValid & dinChannel) = "11" & currChannel else '0';
 	doAdvance <= doAdvanceNext when rising_edge(clk);
 
 	dout <= din when rising_edge(clk);
