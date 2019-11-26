@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
+#define TEST_FMDEC_MULTI
+
 using namespace OwOComm;
 typedef uint64_t SAMPTYPE;
 int decimation = 2;
@@ -11,7 +13,11 @@ static constexpr int bufLength = 8192 - firLength;
 extern const double filter_taps[firLength];
 
 int main(int argc, char** argv) {
+#ifdef TEST_FMDEC_MULTI
+	FMDecoderMulti<SAMPTYPE, 1> fmDec;
+#else
 	FMDecoder<SAMPTYPE> fmDec;
+#endif
 	convolve<float> conv;
 
 	SAMPTYPE buf[bufLength];
@@ -25,10 +31,15 @@ int main(int argc, char** argv) {
 		fmDec.putSamples(buf, r/sizeof(SAMPTYPE));
 
 		// apply fir filter
+#ifdef TEST_FMDEC_MULTI
+		int l = fmDec.outBuf[0].length();
+		//float* res = conv.process(&fmDec.outBuf[0], l);
+		float* res = &fmDec.outBuf[0][0];
+#else
 		int l = fmDec.outBuf.length();
 		//float* res = conv.process(&fmDec.outBuf[0], l);
 		float* res = &fmDec.outBuf[0];
-
+#endif
 		// decimate and output
 		/*int16_t outBuf[bufLength/decimation];
 		int offs = (decimation - (totalSamples % decimation)) % decimation;

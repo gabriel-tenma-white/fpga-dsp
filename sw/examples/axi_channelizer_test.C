@@ -50,6 +50,7 @@ static const int frameElements = 8192;
 
 AXIPipe* axiPipe;
 MultiBufferPool bufPool;
+uint32_t bytesWritten = 0;
 
 int mapReservedMem() {
 	int memfd;
@@ -103,7 +104,7 @@ public:
 	MultiBufferPool* bufPool = nullptr;
 	uint32_t hwFlags = AXIPIPE_FLAG_INTERRUPT;
 	int bufSize = 0;
-	int nTargetPending = 8;
+	int nTargetPending = 16;
 
 	// this callback is called for every completed buffer;
 	// if the function returns false we don't free the buffer.
@@ -119,40 +120,16 @@ public:
 			//printf("submit write; acceptance %d\n", axiPipe->write🅱ufferAcceptance());
 			axiPipe->waitWriteAsync(marker, [this, buf]() {
 				//printf("write complete\n");
+				nPending--;
 				if(cb(buf))
 					bufPool->put(buf);
-				nPending--;
 				start();
 			});
 		}
 	}
 };
 
-uint32_t bytesWritten = 0;
-void test1() {
-	bytesWritten = axiPipe->regs[AXIPIPE_REG_BYTESWRITTEN];
 
-	AXIPipeRecv pipeRecv;
-	pipeRecv.axiPipe = axiPipe;
-	pipeRecv.bufPool = &bufPool;
-	pipeRecv.bufSize = sz;
-	pipeRecv.cb = [](volatile uint8_t* buf) {
-		uint32_t bw = axiPipe->regs[AXIPIPE_REG_BYTESWRITTEN];
-		uint32_t tmp = bw - bytesWritten;
-		bytesWritten = bw;
-		fprintf(stderr, "got %d bytes\n", tmp);
-		write(1, (void*) buf, sz);
-		return true;
-	};
-	pipeRecv.start();
-	while(true) {
-		if(waitForIrq(axiPipe->irqfd) < 0) {
-			perror("wait for irq");
-			return;
-		}
-		axiPipe->dispatchInterrupt();
-	}
-}
 
 // bit-reversals; ripped off of stackoverflow
 uint8_t reverse8(uint8_t n) {
@@ -259,6 +236,44 @@ FMDecoderMultiBase<SAMPLE>* createFMDecoderMulti(int nChannels) {
 	}
 }
 
+
+void test1(const vector<int>& ch) {
+	int nChannels = ch.size();
+	int bytesExpected = ch.size() * frameElements * 8;
+
+	fprintf(stderr, "size of each frame: %d bytes\n", bytesExpected);
+
+	bytesWritten = axiPipe->regs[AXIPIPE_REG_BYTESWRITTEN];
+
+	AXIPipeRecv pipeRecv;
+	pipeRecv.axiPipe = axiPipe;
+	pipeRecv.bufPool = &bufPool;
+	pipeRecv.bufSize = sz;
+
+	uint32_t totalSamples = 0;
+
+	pipeRecv.cb = [&](volatile uint8_t* buf) {
+		uint32_t bw = axiPipe->regs[AXIPIPE_REG_BYTESWRITTEN];
+		uint32_t tmp = bw - bytesWritten;
+		bytesWritten = bw;
+		fprintf(stderr, "got %d bytes\n", tmp);
+
+		uint64_t* samples = (uint64_t*) buf;
+		int nSamples = frameElements;
+
+		write(1, samples, nSamples*8);
+		return true;
+	};
+	pipeRecv.start();
+	while(true) {
+		if(waitForIrq(axiPipe->irqfd) < 0) {
+			perror("wait for irq");
+			return;
+		}
+		axiPipe->dispatchInterrupt();
+	}
+}
+
 void test2(const vector<int>& ch) {
 	int nChannels = ch.size();
 	int bytesExpected = ch.size() * frameElements * 8;
@@ -296,7 +311,7 @@ void test2(const vector<int>& ch) {
 			float* res = &fmDec->outBuf.at(c)[0];
 			int16_t outBuf[l];
 			for(int i=0; i<l; i++) {
-				float tmp = res[i]*20000;
+				float tmp = res[i]*32000;
 				if(tmp > 32767) tmp = 32767;
 				if(tmp < -32767) tmp = -32767;
 				outBuf[i] = (int16_t) tmp;
@@ -319,8 +334,21 @@ void test2(const vector<int>& ch) {
 
 
 int main(int argc, char** argv) {
-	if(argc < 2) {
-		fprintf(stderr, "usage: %s channel0 [channel1...]\n", argv[0]);
+	bool rawOutput = false;
+
+	int opt;
+	while ((opt = getopt(argc, argv, "r")) >= 0) {
+		switch(opt) {
+			case 'r':
+				rawOutput = true;
+				break;
+			default:
+				goto print_help;
+		}
+	}
+	if(optind >= argc) {
+	print_help:
+		fprintf(stderr, "usage: %s [-r] channel0 [channel1...]\n", argv[0]);
 		return 1;
 	}
 	if(mapReservedMem() < 0) {
@@ -332,16 +360,20 @@ int main(int argc, char** argv) {
 	axiPipe->reservedMemAddr = reservedMemAddr;
 
 	bufPool.init(reservedMem, reservedMemSize);
-	bufPool.addPool(sz, 20);
+	bufPool.addPool(sz, 32);
 
-	int nChannels = argc - 1;
+	
+
+	int nChannels = argc - optind;
 	vector<int> ch(nChannels, 0);
 	for(int i=0; i<nChannels; i++) {
-		ch.at(i) = atoi(argv[i + 1]);
+		ch.at(i) = atoi(argv[i + optind]);
 	}
 	setChannels(ch);
 
-	test2(ch);
+	if(rawOutput)
+		test1(ch);
+	else test2(ch);
 	
 	return 0;
 }

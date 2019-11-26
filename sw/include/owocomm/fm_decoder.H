@@ -44,6 +44,7 @@ namespace OwOComm {
 	struct FMDecoderMulti: public FMDecoderMultiBase<SAMPLE> {
 
 		complexf prev[channels] = {};
+		float prevMag[channels] = {};
 		float iirF[channels] = {};
 		float iirG[channels] = {};
 		float iirH[channels] = {};
@@ -75,13 +76,22 @@ namespace OwOComm {
 					float A0 = prev.real() * x0.imag();
 					float B0 = prev.imag() * x0.real();
 					float mag0 = (x0.real() * x0.real()) + (x0.imag() * x0.imag());
-					float out0 = (A0 - B0) / mag0;
-					prev = x0;
+					float out0 = (A0 - B0) / sqrt(mag0*prevMag[ch]);
 
 					// ignore outlier values; significantly reduces noise in low snr tests
-					if(out0 < -2 || out0 > 2)
-						continue;
+					/*if(out0 < -2 || out0 > 2) {
+						prev *= polar(1.0f, iirF[ch]);
+						out0 = iirF[ch];
+					} else  prev = x0;*/
+					//if(fabs(mag0-prevMag) > (mag0))
+					//if(mag0 < prevMag[ch]*0.1)
+					//	out0 = iirF[ch];
+					//else
+					out0 += (out0*out0*out0) * .23;
 
+
+					prev = x0;
+					prevMag[ch] = mag0;
 					// de-emphasis filter
 					float F0 = iirF[ch]*0.95f + out0*0.05f;
 					
