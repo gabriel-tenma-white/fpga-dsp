@@ -27,7 +27,11 @@ entity overlapStreamBuffer2 is
 
 		-- external bit permutor
 		bitPermIn: out unsigned(depthOrder-1 downto 0);
-		bitPermOut: in unsigned(depthOrder-1 downto 0)
+		bitPermOut: in unsigned(depthOrder-1 downto 0);
+
+		-- internal control signals, for overlapStreamBuffer3 use only
+		doutRAddr: out unsigned(depthOrder downto 0);
+		doutCounter: out unsigned(depthOrder + overlapOrder downto 0)
 		);
 end entity;
 architecture ar of overlapStreamBuffer2 is
@@ -112,4 +116,9 @@ begin
 		generic map(len=>bitPermDelay + ramReadDelay - doutValidAdvance)
 		port map(clk=>outClk, din=>outCE, dout=>doutValid);
 
+	-- output internal control signals
+	sr_counter: entity sr_unsigned
+		generic map(bits=>depthOrder+upperDepthOrder, len=>bitPermDelay + ramReadDelay)
+		port map(clk=>outClk, din=>counterB, dout=>doutCounter);
+	doutRAddr <= ramRAddr;
 end ar;
