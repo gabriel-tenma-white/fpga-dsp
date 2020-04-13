@@ -23,7 +23,7 @@ end entity;
 architecture a of channelizer1024_16 is
 	constant depthOrder: integer := 10;
 	constant twBits: integer := 17;
-	constant windowDelay: integer := 5;
+	constant windowDelay: integer := 6;
 	signal window_dout, fft_din: complex;
 
 	signal bpIn, bpOut: unsigned(depthOrder-1 downto 0);
@@ -32,19 +32,23 @@ architecture a of channelizer1024_16 is
 	signal outClk_gated: std_logic;
 	signal gated_din, gated_dout: complex;
 	signal gated_phase, gated_index: unsigned(depthOrder-1 downto 0);
-	signal gated_ce0, gated_ce: std_logic;
+	signal gated_ce0, gated_ce, gated_ce_dup: std_logic;
 	signal fft_phase: unsigned(depthOrder-1 downto 0);
 	signal oPh, oPh0: unsigned(depthOrder-1 downto 0);
 
 	attribute clock_buffer_type: string;
 	attribute clock_buffer_type of outClk_unbuffered:signal is "NONE";
+	attribute keep: string;
+	attribute keep of gated_ce:signal is "TRUE";
+	attribute keep of gated_ce_dup:signal is "TRUE";
 begin
 	overlap: entity overlapStreamBuffer2
 		generic map(depthOrder=>10,
 					overlapOrder=>4,
 					dataBits=>inBits,
 					bitPermDelay=>0,
-					doutValidAdvance=>1)
+					doutValidAdvance=>1,
+					extraRegister=>0)
 		port map(inClk=>inClk,
 				outClk=>outClk,
 				din=>din,
@@ -66,9 +70,10 @@ begin
 	--bpOut <= bpIn;
 
 	gated_ce <= gated_ce0 when rising_edge(outClk);
+	gated_ce_dup <= gated_ce0 when rising_edge(outClk);
 	cg: entity clockGating
 		port map(clkInUnbuffered=>outClk_unbuffered,
-				ce=>gated_ce,
+				ce=>gated_ce_dup,
 				clkOutGated=>outClk_gated);
 
 	window: entity windowMultiply1024_64

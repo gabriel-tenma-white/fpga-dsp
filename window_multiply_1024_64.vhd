@@ -1,12 +1,11 @@
 
-
 library ieee;
 library work;
 use ieee.numeric_std.all;
 use ieee.std_logic_1164.all;
 use work.fft_types.all;
 
--- delay is 5 cycles
+-- delay is 6 cycles
 
 entity windowMultiply1024_64 is
 	generic(dataBits, outBits: integer := 18);
@@ -17,9 +16,10 @@ entity windowMultiply1024_64 is
 			);
 end entity;
 architecture a of windowMultiply1024_64 is
+	constant folding: integer := 1;
 	constant romDepthOrder: integer := 10;
 	constant romDepth: integer := 2**romDepthOrder;
-	constant romWidth: integer := 18;
+	constant romWidth: integer := 18 * folding;
 	--ram
 	type ram1t is array(0 to romDepth-1) of
 		std_logic_vector(romWidth-1 downto 0);
@@ -28,7 +28,7 @@ architecture a of windowMultiply1024_64 is
 	signal data0, data1, data2: std_logic_vector(romWidth-1 downto 0);
 	signal coeff: signed(romWidth-1 downto 0);
 
-	signal din1, din2, din3: complex;
+	signal din1, din2, din3, din4: complex;
 
 	-- multiplier
 	signal multOutRe, multOutIm: signed(dataBits+romWidth-1 downto 0);
@@ -39,7 +39,7 @@ architecture a of windowMultiply1024_64 is
 	attribute keep of data2: signal is "true";
 begin
 	-- coefficient rom
-	addr1 <= index; -- when rising_edge(clk);
+	addr1 <= index when rising_edge(clk);
 	data0 <= rom(to_integer(addr1));
 	data1 <= data0 when rising_edge(clk);
 	data2 <= data1 when rising_edge(clk);
@@ -49,10 +49,11 @@ begin
 	din1 <= din when rising_edge(clk);
 	din2 <= din1 when rising_edge(clk);
 	din3 <= din2 when rising_edge(clk);
+	din4 <= din3 when rising_edge(clk);
 
 	-- multiply
-	multOutRe <= coeff * complex_re(din3, dataBits);
-	multOutIm <= coeff * complex_im(din3, dataBits);
+	multOutRe <= coeff * complex_re(din4, dataBits);
+	multOutIm <= coeff * complex_im(din4, dataBits);
 
 	multOut <= to_complex(multOutRe(multOutRe'left-1 downto multOutRe'left-outBits),
 						multOutIm(multOutIm'left-1 downto multOutIm'left-outBits));
@@ -60,9 +61,7 @@ begin
 	dout <= multOut1 when rising_edge(clk);
 
 	-- rom
-	rom <= (
-
-"000000000000000000" , "000000000000000000" , "000000000000000000" , "000000000000000000" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" ,
+	rom <= ("000000000000000000" , "000000000000000000" , "000000000000000000" , "000000000000000000" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" ,
 "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111111" , "111111111111111110" ,
 "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" ,
 "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111110" , "111111111111111111" , "111111111111111111" ,
