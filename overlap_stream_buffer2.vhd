@@ -16,7 +16,9 @@ entity overlapStreamBuffer2 is
 			-- removes 1 or 2 registers from the doutIndex pipeline
 			doutIndexAdvance: integer := 0;
 			-- removes 1 or 2 registers from the doutValid pipeline
-			doutValidAdvance: integer := 0);
+			doutValidAdvance: integer := 0;
+			-- add an extra register to dout, doutValid, doutIndex, and doutPhase
+			extraRegister: integer := 0);
 	port(inClk, outClk: in std_logic;
 		din: in complex;
 		dinValid: in std_logic := '1';
@@ -60,8 +62,10 @@ architecture ar of overlapStreamBuffer2 is
 	signal counterAUpper: unsigned(upperDepthOrder-1 downto 0);
 
 	-- outClk domain
-	constant ramReadDelay: integer := 2;
+	constant ramReadDelay: integer := 3;
 	signal ramRAddr: unsigned(ramDepthOrder-1 downto 0);
+	signal ramRData: complex;
+
 	-- counter B consists of the read marker concatenated with the read index
 	signal counterB: unsigned(depthOrder+upperDepthOrder-1 downto 0) := (others=>'0');
 	signal counterBP1: unsigned(depthOrder+upperDepthOrder-1 downto 0) := (0=>'1', others=>'0');
@@ -77,7 +81,7 @@ begin
 	ram1: entity complexRam
 		generic map(dataBits=>dataBits, depthOrder=>ramDepthOrder)
 		port map(wrclk=>inClk, rdclk=>outClk,
-				rdaddr=>ramRAddr, rddata=>dout,
+				rdaddr=>ramRAddr, rddata=>ramRData,
 				wraddr=>counterA, wrdata=>din, wren=>dinValid);
 
 	-- cdc
@@ -97,7 +101,7 @@ begin
 	sr_readMarker: entity sr_unsigned
 		generic map(bits=>upperDepthOrder, len=>bitPermDelay)
 		port map(clk=>outClk, din=>readMarker, dout=>readMarker1);
-	ramRAddr <= moveIntoWindow(bitPermOut, readMarker1);
+	ramRAddr <= moveIntoWindow(bitPermOut, readMarker1) when rising_edge(outClk);
 	
 	
 	outCE <= '1' when counterAUpper_outClk /= readMarker else '0';
@@ -105,16 +109,23 @@ begin
 	index <= bitPermOut - readLogicalOffset;
 
 	sr_phase: entity sr_unsigned
-		generic map(bits=>depthOrder, len=>bitPermDelay + ramReadDelay)
+		generic map(bits=>depthOrder, len=>bitPermDelay + ramReadDelay + extraRegister)
 		port map(clk=>outClk, din=>counterBIndex, dout=>doutPhase);
 
 	sr_index: entity sr_unsigned
-		generic map(bits=>depthOrder, len=>ramReadDelay-doutIndexAdvance)
+		generic map(bits=>depthOrder, len=>ramReadDelay - doutIndexAdvance + extraRegister)
 		port map(clk=>outClk, din=>index, dout=>doutIndex);
 
 	sr_valid: entity sr_bit
-		generic map(len=>bitPermDelay + ramReadDelay - doutValidAdvance)
+		generic map(len=>bitPermDelay + ramReadDelay - doutValidAdvance + extraRegister, forceRegisters=>true)
 		port map(clk=>outClk, din=>outCE, dout=>doutValid);
+
+g1: if extraRegister = 0 generate
+		dout <= ramRData;
+	end generate;
+g2: if extraRegister = 1 generate
+		dout <= ramRData when rising_edge(outClk);
+	end generate;
 
 	-- output internal control signals
 	sr_counter: entity sr_unsigned
